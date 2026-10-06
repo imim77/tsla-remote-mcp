@@ -56,15 +56,31 @@ func (s *Server) OAuthCallback() http.HandlerFunc {
 			http.Error(w, "Missing authorization code", http.StatusBadRequest)
 			return
 		}
-		_, err = s.OAuthConfig.Exchange(r.Context(), code, oauth2.SetAuthURLParam("audience", os.Getenv("TESLA_AUDIENCE")))
+		token, err := s.OAuthConfig.Exchange(r.Context(), code, oauth2.SetAuthURLParam("audience", os.Getenv("TESLA_AUDIENCE")))
 		if err != nil {
 			s.Logger.Error("OAuth exchange failed", "error", err)
 			http.Error(w, "OAuth exchange failed", http.StatusBadGateway)
 			return
 		}
+		expiresIn := "unknown"
+		if !token.Expiry.IsZero() {
+			expiresIn = time.Until(token.Expiry).Round(time.Second).String()
+		}
+		s.Logger.Info("OAuth tokens received",
+			"access_token_prefix", firstSeven(token.AccessToken),
+			"refresh_token_prefix", firstSeven(token.RefreshToken),
+			"access_expires_in", expiresIn,
+		)
 
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+func firstSeven(value string) string {
+	if len(value) < 7 {
+		return "<short or empty>"
+	}
+	return value[:7]
 }
 
 func (s *Server) InitializeTeslaAuth() http.HandlerFunc {
