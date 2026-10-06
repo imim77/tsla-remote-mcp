@@ -6,7 +6,7 @@ import (
 
 func SetupRoutes(server *Server) *chi.Mux {
 	r := chi.NewRouter()
-
+	r.Use(LoggerMiddleware(server.Logger))
 	r.Group(func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
 			r.Get("/tsla", server.InitializeTeslaAuth())
