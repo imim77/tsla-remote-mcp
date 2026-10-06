@@ -1,7 +1,14 @@
 package main
 
-// TIP <p>To run your code, right-click the code and select <b>Run</b>.</p> <p>Alternatively, click
-// the <icon src="AllIcons.Actions.Execute"/> icon in the gutter and select the <b>Run</b> menu item from here.</p>
+import (
+	"log"
+	"net/http"
+
+	"tsla-remote-mcp/internal/server"
+)
+
 func main() {
-	println("Hello, world!")
+	s := server.NewServer()
+	s.Logger.Info("starting HTTP server", "address", ":8080")
+	log.Fatal(http.ListenAndServe(":8080", s.Handler()))
 }
