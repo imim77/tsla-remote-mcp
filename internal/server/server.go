@@ -35,6 +35,8 @@ func NewServer() *Server {
 
 func (s *Server) OAuthCallback() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Referrer-Policy", "no-referrer")
 		stateCookie, err := r.Cookie(oauthStateCookie)
 		state := r.URL.Query().Get("state")
 		if err != nil || state == "" || subtle.ConstantTimeCompare([]byte(state), []byte(stateCookie.Value)) != 1 {
@@ -72,7 +74,19 @@ func (s *Server) OAuthCallback() http.HandlerFunc {
 			"access_expires_in", expiresIn,
 		)
 
-		w.WriteHeader(http.StatusNoContent)
+		http.Redirect(w, r, "/auth/success", http.StatusSeeOther)
+	}
+}
+
+func (s *Server) OAuthSuccess() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = w.Write([]byte(`<!doctype html>
+<html lang="hr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Tesla autorizacija</title></head>
+<body><h1>Autorizacija s Teslom uspješno je završena.</h1><p>Možete zatvoriti ovu stranicu.</p></body>
+</html>`))
 	}
 }
 
