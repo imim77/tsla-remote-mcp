@@ -28,6 +28,7 @@ func NewServer() *Server {
 	s := &Server{
 		OAuthConfig: auth.InitializeOAuthConfig(),
 		Logger:      slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{})),
+		TokenStore:  store.NewInMemoryStore(),
 	}
 	s.ChiMultiplexer = SetupRoutes(s)
 	return s
@@ -62,6 +63,11 @@ func (s *Server) OAuthCallback() http.HandlerFunc {
 		if err != nil {
 			s.Logger.Error("OAuth exchange failed", "error", err)
 			http.Error(w, "OAuth exchange failed", http.StatusBadGateway)
+			return
+		}
+		if err := s.TokenStore.Save(r.Context(), token); err != nil {
+			s.Logger.Error("Failed to save OAuth tokens", "error", err)
+			http.Error(w, "Could not save OAuth tokens", http.StatusInternalServerError)
 			return
 		}
 		expiresIn := "unknown"

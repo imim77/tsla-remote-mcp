@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -38,12 +39,11 @@ func TestOAuthCallbackRedirectsToSuccessPage(t *testing.T) {
 		}, nil
 	})}
 
-	s := &Server{
-		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		OAuthConfig: &oauth2.Config{
-			ClientID: "test-client", ClientSecret: "test-secret",
-			Endpoint: oauth2.Endpoint{TokenURL: "https://tesla.example/token", AuthStyle: oauth2.AuthStyleInParams},
-		},
+	s := NewServer()
+	s.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
+	s.OAuthConfig = &oauth2.Config{
+		ClientID: "test-client", ClientSecret: "test-secret",
+		Endpoint: oauth2.Endpoint{TokenURL: "https://tesla.example/token", AuthStyle: oauth2.AuthStyleInParams},
 	}
 	s.ChiMultiplexer = SetupRoutes(s)
 	request := httptest.NewRequest(http.MethodGet, "/auth/callback?code=test-code&state=test-state", nil)
@@ -54,6 +54,13 @@ func TestOAuthCallbackRedirectsToSuccessPage(t *testing.T) {
 
 	if response.Code != http.StatusSeeOther {
 		t.Fatalf("callback status = %d, want 303; body: %s", response.Code, response.Body.String())
+	}
+	saved, err := s.TokenStore.Load(context.Background())
+	if err != nil {
+		t.Fatalf("Load() after callback: %v", err)
+	}
+	if saved.AccessToken != "test-access-token" || saved.RefreshToken != "test-refresh-token" || saved.Expiry.IsZero() {
+		t.Error("callback did not store the received tokens and expiry")
 	}
 	if location := response.Header().Get("Location"); location != "/auth/success" {
 		t.Fatalf("callback Location = %q, want /auth/success", location)
@@ -77,5 +84,43 @@ func TestOAuthCallbackRedirectsToSuccessPage(t *testing.T) {
 	}
 	if !strings.HasPrefix(success.Header().Get("Content-Type"), "text/html") || !strings.Contains(success.Body.String(), "Autorizacija s Teslom uspješno je završena.") {
 		t.Error("success page did not return an HTML confirmation")
+	}
+}
+
+type failingTokenStore struct{}
+
+func (failingTokenStore) Save(context.Context, *oauth2.Token) error {
+	return errors.New("storage unavailable")
+}
+
+func (failingTokenStore) Load(context.Context) (*oauth2.Token, error) {
+	return nil, errors.New("storage unavailable")
+}
+
+func TestOAuthCallbackDoesNotRedirectWhenSavingFails(t *testing.T) {
+	client := &http.Client{Transport: tokenTransportFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": {"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"access_token":"test-access-token","token_type":"Bearer"}`)),
+		}, nil
+	})}
+	s := &Server{
+		Logger:     slog.New(slog.NewTextHandler(io.Discard, nil)),
+		TokenStore: failingTokenStore{},
+		OAuthConfig: &oauth2.Config{
+			Endpoint: oauth2.Endpoint{TokenURL: "https://tesla.example/token", AuthStyle: oauth2.AuthStyleInParams},
+		},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/auth/callback?code=test-code&state=test-state", nil)
+	request = request.WithContext(context.WithValue(request.Context(), oauth2.HTTPClient, client))
+	request.AddCookie(&http.Cookie{Name: oauthStateCookie, Value: "test-state"})
+	response := httptest.NewRecorder()
+	s.OAuthCallback().ServeHTTP(response, request)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("callback status = %d, want 500", response.Code)
+	}
+	if location := response.Header().Get("Location"); location != "" {
+		t.Fatalf("callback redirected despite failed save: %q", location)
 	}
 }
