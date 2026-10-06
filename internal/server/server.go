@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 	"tsla-remote-mcp/internal/auth"
+	"tsla-remote-mcp/internal/store"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/oauth2"
@@ -20,6 +21,7 @@ type Server struct {
 	OAuthConfig    *oauth2.Config
 	Logger         *slog.Logger
 	ChiMultiplexer *chi.Mux
+	TokenStore     store.Repository
 }
 
 func NewServer() *Server {
