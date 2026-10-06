@@ -9,6 +9,7 @@ func SetupRoutes(server *Server) *chi.Mux {
 
 	r.Group(func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
+			r.Get("/tsla", server.InitializeTeslaAuth())
 			r.Get("/callback", server.OAuthCallback())
 		})
 	})

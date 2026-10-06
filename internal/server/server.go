@@ -1,7 +1,9 @@
 package server
 
 import (
-	"log"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 	"os"
@@ -10,6 +12,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/oauth2"
 )
+
+const oauthStateCookie = "tesla_oauth_state"
 
 type Server struct {
 	OAuthConfig    *oauth2.Config
@@ -28,15 +32,57 @@ func NewServer() *Server {
 
 func (s *Server) OAuthCallback() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		stateCookie, err := r.Cookie(oauthStateCookie)
+		state := r.URL.Query().Get("state")
+		if err != nil || state == "" || subtle.ConstantTimeCompare([]byte(state), []byte(stateCookie.Value)) != 1 {
+			http.Error(w, "Invalid OAuth state", http.StatusBadRequest)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name: oauthStateCookie, Value: "", Path: "/auth",
+			MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode,
+			Secure: r.TLS != nil,
+		})
+
+		if oauthError := r.URL.Query().Get("error"); oauthError != "" {
+			http.Error(w, "Tesla authorization failed", http.StatusBadRequest)
+			return
+		}
 		code := r.URL.Query().Get("code")
-		_, err := s.OAuthConfig.Exchange(r.Context(), code)
+		if code == "" {
+			http.Error(w, "Missing authorization code", http.StatusBadRequest)
+			return
+		}
+		_, err = s.OAuthConfig.Exchange(r.Context(), code, oauth2.SetAuthURLParam("audience", os.Getenv("TESLA_AUDIENCE")))
 		if err != nil {
-			log.Print(err)
+			s.Logger.Error("OAuth exchange failed", "error", err)
 			http.Error(w, "OAuth exchange failed", http.StatusBadGateway)
 			return
 		}
 
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func (s *Server) InitializeTeslaAuth() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.OAuthConfig.ClientID == "" {
+			http.Error(w, "TESLA_CLIENT_ID is not configured", http.StatusInternalServerError)
+			return
+		}
+		stateBytes := make([]byte, 32)
+		if _, err := rand.Read(stateBytes); err != nil {
+			s.Logger.Error("Failed to generate OAuth state", "error", err)
+			http.Error(w, "Could not start authorization", http.StatusInternalServerError)
+			return
+		}
+		state := hex.EncodeToString(stateBytes)
+		http.SetCookie(w, &http.Cookie{
+			Name: oauthStateCookie, Value: state, Path: "/auth",
+			MaxAge: 600, HttpOnly: true, SameSite: http.SameSiteLaxMode,
+			Secure: r.TLS != nil,
+		})
+		http.Redirect(w, r, s.OAuthConfig.AuthCodeURL(state), http.StatusFound)
 	}
 }
 
