@@ -26,9 +26,13 @@ func TestServerAvailableBeforeTeslaConnection(t *testing.T) {
 	if home.Code != http.StatusOK || home.Header().Get("Location") != "" || !strings.Contains(home.Body.String(), "Poveži Tesla račun") {
 		t.Fatalf("home should show connection status, got %d %s", home.Code, home.Body.String())
 	}
-	for _, name := range []string{"ping", "list_vehicles"} {
+	for _, name := range []string{"ping", "list_vehicles", "vehicle_data"} {
 		t.Run(name, func(t *testing.T) {
-			request := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+name+`","arguments":{}}}`))
+			arguments := `{}`
+			if name == "vehicle_data" {
+				arguments = `{"vin":"TESTVIN"}`
+			}
+			request := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+name+`","arguments":`+arguments+`}}`))
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("Accept", "application/json, text/event-stream")
 			request.Header.Set("MCP-Protocol-Version", "2025-11-25")

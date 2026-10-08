@@ -52,6 +52,13 @@ the SDK's default protection.
 2. Open the service's `/` page and choose **Poveži Teslu**. Complete Tesla consent.
 3. Connect an MCP client using Streamable HTTP at `/mcp`.
 4. Call `list_vehicles` with `{}`. `ping` works even before connecting Tesla.
+5. Call `vehicle_data` with `{"vin":"<VIN from list_vehicles>"}` to fetch live
+   vehicle data. The tool returns the Fleet API JSON response.
+
+The [vehicle_data endpoint](https://developer.tesla.com/docs/fleet-api/endpoints/vehicle-endpoints#vehicle-data)
+makes a live request to the vehicle. Tesla recommends Fleet Telemetry for continuous
+monitoring because frequent polling is expensive. The tool does not send a
+separate `wake_up` request or retry requests automatically.
 
 The `/` page shows connection status and offers an explicit reconnection link.
 It does not start a new login on every visit. Tokens are never returned by MCP

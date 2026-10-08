@@ -36,6 +36,10 @@ func (mcp *Server) registerTools() {
 		Description: "List vehicles belonging to the authorized Tesla account.",
 	}, mcp.ListVehicles)
 	sdk.AddTool(mcp.srv, &sdk.Tool{
+		Name:        "vehicle_data",
+		Description: "Fetch live data for a Tesla vehicle by VIN. Avoid frequent polling; use Fleet Telemetry for continuous monitoring.",
+	}, mcp.VehicleData)
+	sdk.AddTool(mcp.srv, &sdk.Tool{
 		Name:        "ping",
 		Description: "Check that the MCP server is responding.",
 	}, func(ctx context.Context, req *sdk.CallToolRequest, args struct{}) (*sdk.CallToolResult, any, error) {

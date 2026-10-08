@@ -38,6 +38,22 @@ func NewClient(baseURL string, tokens TokenProvider) *Client {
 }
 
 func (c *Client) ListVehicles(ctx context.Context) (json.RawMessage, error) {
+	return c.get(ctx, "/api/1/vehicles")
+}
+
+func (c *Client) VehicleData(ctx context.Context, vin string) (json.RawMessage, error) {
+	if vin == "" {
+		return nil, errors.New("VIN is required")
+	}
+	for _, char := range vin {
+		if !(char >= 'A' && char <= 'Z' || char >= 'a' && char <= 'z' || char >= '0' && char <= '9') {
+			return nil, errors.New("VIN must contain only letters and digits")
+		}
+	}
+	return c.get(ctx, "/api/1/vehicles/"+vin+"/vehicle_data")
+}
+
+func (c *Client) get(ctx context.Context, path string) (json.RawMessage, error) {
 	base, err := url.Parse(c.baseURL)
 	if err != nil || base.Scheme != "https" || base.Host == "" || base.User != nil || base.Path != "" || base.RawQuery != "" || base.Fragment != "" {
 		return nil, errors.New("TESLA_AUDIENCE must be a Fleet API HTTPS base URL")
@@ -52,7 +68,7 @@ func (c *Client) ListVehicles(ctx context.Context) (json.RawMessage, error) {
 	if !token.Valid() {
 		return nil, errors.New("Tesla token has expired or is empty; sign in through /auth/tsla again")
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/1/vehicles", nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +76,7 @@ func (c *Client) ListVehicles(ctx context.Context) (json.RawMessage, error) {
 	request.Header.Set("Accept", "application/json")
 	response, err := c.httpClient.Do(request)
 	if err != nil {
-		return nil, fmt.Errorf("request Tesla vehicles: %w", err)
+		return nil, fmt.Errorf("request Tesla Fleet API: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode == http.StatusUnauthorized {

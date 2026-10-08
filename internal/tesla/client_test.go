@@ -2,6 +2,7 @@ package tesla
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -113,5 +114,87 @@ func TestListVehiclesUsesRefreshedCredentials(t *testing.T) {
 	saved, err := tokens.Load(context.Background())
 	if err != nil || saved.RefreshToken != "rotated" {
 		t.Fatal("rotated refresh token was not retained")
+	}
+}
+
+func TestVehicleData(t *testing.T) {
+	const data = `{"response":{"vin":"TESTVIN","id":1234567890123456789,"charge_state":{"battery_level":80},"future_field":true}}`
+	tests := []struct {
+		name        string
+		vin         string
+		status      int
+		body        string
+		wantError   string
+		wantRequest bool
+	}{
+		{name: "live data", vin: "TESTVIN", status: 200, body: data, wantRequest: true},
+		{name: "missing VIN", wantError: "VIN is required"},
+		{name: "blank VIN", vin: " ", wantError: "letters and digits"},
+		{name: "path injection", vin: "../other", wantError: "letters and digits"},
+		{name: "query injection", vin: "TESTVIN?x=y", wantError: "letters and digits"},
+		{name: "vehicle asleep", vin: "TESTVIN", status: 408, body: `{"error":"vehicle unavailable","txid":"request-123"}`, wantError: `HTTP 408; Tesla error: "vehicle unavailable"; txid: "request-123"`, wantRequest: true},
+		{name: "rejected authorization", vin: "TESTVIN", status: 401, wantError: "reconnect through /auth/tsla", wantRequest: true},
+		{name: "invalid JSON", vin: "TESTVIN", status: 200, body: "not JSON", wantError: "invalid", wantRequest: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			key := struct{}{}
+			ctx = context.WithValue(ctx, key, "caller")
+			tokens := store.NewInMemoryStore()
+			if err := tokens.Save(ctx, &oauth2.Token{AccessToken: "test-token"}); err != nil {
+				t.Fatal(err)
+			}
+			client := NewClient("https://fleet.example.com", auth.NewService(&oauth2.Config{}, "https://fleet.example.com", tokens))
+			calls := 0
+			client.httpClient.Transport = transportFunc(func(r *http.Request) (*http.Response, error) {
+				calls++
+				if r.Method != http.MethodGet || r.URL.String() != "https://fleet.example.com/api/1/vehicles/TESTVIN/vehicle_data" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL)
+				}
+				if r.Header.Get("Authorization") != "Bearer test-token" || r.Header.Get("Accept") != "application/json" {
+					t.Errorf("unexpected headers: %v", r.Header)
+				}
+				if r.Context().Value(key) != "caller" {
+					t.Error("caller context was not propagated")
+				}
+				return &http.Response{StatusCode: test.status, Body: io.NopCloser(strings.NewReader(test.body))}, nil
+			})
+			got, err := client.VehicleData(ctx, test.vin)
+			wantCalls := 0
+			if test.wantRequest {
+				wantCalls = 1
+			}
+			if calls != wantCalls {
+				t.Errorf("HTTP calls = %d, want %d", calls, wantCalls)
+			}
+			if test.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantError) {
+					t.Fatalf("error = %v, want %q", err, test.wantError)
+				}
+				return
+			}
+			if err != nil || string(got) != data {
+				t.Fatalf("VehicleData() = %s, %v", got, err)
+			}
+		})
+	}
+}
+
+func TestVehicleDataCancellation(t *testing.T) {
+	tokens := store.NewInMemoryStore()
+	if err := tokens.Save(context.Background(), &oauth2.Token{AccessToken: "test-token"}); err != nil {
+		t.Fatal(err)
+	}
+	client := NewClient("https://fleet.example.com", auth.NewService(&oauth2.Config{}, "https://fleet.example.com", tokens))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client.httpClient.Transport = transportFunc(func(r *http.Request) (*http.Response, error) {
+		cancel()
+		return nil, r.Context().Err()
+	})
+	if _, err := client.VehicleData(ctx, "TESTVIN"); !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
 	}
 }
