@@ -13,11 +13,13 @@ const (
 )
 
 type Server struct {
-	srv *sdk.Server
+	srv      *sdk.Server
+	vehicles VehicleReader
 }
 
-func NewServer() *Server {
+func NewServer(vehicles VehicleReader) *Server {
 	server := &Server{
+		vehicles: vehicles,
 		srv: sdk.NewServer(&sdk.Implementation{
 			Name:    ServerName,
 			Version: ServerVersion,
@@ -29,6 +31,10 @@ func NewServer() *Server {
 
 func (mcp *Server) registerTools() {
 	sdk.AddTool(mcp.srv, &sdk.Tool{
+		Name:        "list_vehicles",
+		Description: "List vehicles belonging to the authorized Tesla account. Sign in through /auth/tsla first.",
+	}, mcp.RetrieveBasicVehicleData)
+	sdk.AddTool(mcp.srv, &sdk.Tool{
 		Name:        "ping",
 		Description: "Check that the MCP server is responding.",
 	}, func(ctx context.Context, req *sdk.CallToolRequest, args struct{}) (*sdk.CallToolResult, any, error) {
@@ -38,8 +44,8 @@ func (mcp *Server) registerTools() {
 	})
 }
 
-func NewHandler() http.Handler {
-	server := NewServer()
+func NewHandler(vehicles VehicleReader) http.Handler {
+	server := NewServer(vehicles)
 	return sdk.NewStreamableHTTPHandler(func(r *http.Request) *sdk.Server {
 		return server.srv
 	}, &sdk.StreamableHTTPOptions{
