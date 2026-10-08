@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"net/url"
@@ -16,6 +17,8 @@ import (
 )
 
 func main() {
+	verifyOnly := flag.Bool("verify-only", false, "Verify the existing registration without registering again")
+	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
@@ -26,7 +29,11 @@ func main() {
 		Scopes:         []string{"openid", "vehicle_device_data", "vehicle_cmds", "vehicle_charging_cmds"},
 		EndpointParams: url.Values{"audience": {os.Getenv("TESLA_AUDIENCE")}},
 	}
-	if err := tesla.RegisterPartner(ctx, config, os.Getenv("DOMAIN_SERVICE")); err != nil {
+	operation := tesla.RegisterPartner
+	if *verifyOnly {
+		operation = tesla.VerifyPartner
+	}
+	if err := operation(ctx, config, os.Getenv("DOMAIN_SERVICE")); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("Tesla partner registration confirmed. Retry list_vehicles using the connected Tesla account.")

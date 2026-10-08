@@ -104,6 +104,16 @@ registered public key to confirm that it matches. It does not print credentials
 or save the partner token in the user token store. The domain must match the
 application's Allowed Origins in the Tesla Developer portal.
 
+Key verification compares the P-256 key bytes, accepting Tesla's hex EC point
+representation and PEM. If registration was submitted but verification failed,
+check the existing registration without sending another registration request:
+
+```sh
+DOMAIN_SERVICE=https://tsla-remote-mcp.onrender.com \
+TESLA_AUDIENCE=https://fleet-api.prd.eu.vn.cloud.tesla.com \
+go run ./cmd/register-partner -verify-only
+```
+
 Run registration once per required Fleet API region. Keep the public key hosted
 after registration. Do not regenerate the key on startup or redeploy.
 
