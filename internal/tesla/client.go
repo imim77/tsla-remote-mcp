@@ -10,16 +10,21 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"tsla-remote-mcp/internal/store"
+
+	"golang.org/x/oauth2"
 )
+
+type TokenProvider interface {
+	Token(context.Context) (*oauth2.Token, error)
+}
 
 type Client struct {
 	baseURL    string
-	tokens     store.Repository
+	tokens     TokenProvider
 	httpClient *http.Client
 }
 
-func NewClient(baseURL string, tokens store.Repository) *Client {
+func NewClient(baseURL string, tokens TokenProvider) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		tokens:  tokens,
@@ -38,14 +43,11 @@ func (c *Client) ListVehicles(ctx context.Context) (json.RawMessage, error) {
 		return nil, errors.New("TESLA_AUDIENCE must be a Fleet API HTTPS base URL")
 	}
 	if c.tokens == nil {
-		return nil, errors.New("token store is not configured")
+		return nil, errors.New("Tesla token provider is not configured")
 	}
-	token, err := c.tokens.Load(ctx)
-	if errors.Is(err, store.ErrTokenNotFound) {
-		return nil, errors.New("sign in to Tesla through /auth/tsla first")
-	}
+	token, err := c.tokens.Token(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("load Tesla token: %w", err)
+		return nil, fmt.Errorf("get Tesla token: %w", err)
 	}
 	if !token.Valid() {
 		return nil, errors.New("Tesla token has expired or is empty; sign in through /auth/tsla again")
@@ -61,6 +63,9 @@ func (c *Client) ListVehicles(ctx context.Context) (json.RawMessage, error) {
 		return nil, fmt.Errorf("request Tesla vehicles: %w", err)
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusUnauthorized {
+		return nil, errors.New("Tesla rejected authorization; reconnect through /auth/tsla")
+	}
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("Tesla vehicles request failed: HTTP %d", response.StatusCode)
 	}

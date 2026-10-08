@@ -11,7 +11,7 @@ type VehicleReader interface {
 	ListVehicles(context.Context) (json.RawMessage, error)
 }
 
-func (s *Server) RetrieveBasicVehicleData(ctx context.Context, req *sdk.CallToolRequest, args struct{}) (*sdk.CallToolResult, any, error) {
+func (s *Server) ListVehicles(ctx context.Context, req *sdk.CallToolRequest, args struct{}) (*sdk.CallToolResult, any, error) {
 	if s.vehicles == nil {
 		return toolError("Tesla client is not configured"), nil, nil
 	}

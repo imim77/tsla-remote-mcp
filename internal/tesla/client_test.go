@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"tsla-remote-mcp/internal/auth"
 	"tsla-remote-mcp/internal/store"
 
 	"golang.org/x/oauth2"
@@ -29,7 +30,7 @@ func TestListVehicles(t *testing.T) {
 		wantRequest bool
 	}{
 		{name: "vehicles", token: &oauth2.Token{AccessToken: "test-token"}, status: 200, body: vehicles, wantRequest: true},
-		{name: "missing token", wantError: "sign in to Tesla"},
+		{name: "missing token", wantError: "connect your Tesla account"},
 		{name: "expired token", token: &oauth2.Token{AccessToken: "test-token", Expiry: time.Now().Add(-time.Hour)}, wantError: "expired"},
 		{name: "Tesla error", token: &oauth2.Token{AccessToken: "test-token"}, status: 503, wantError: "HTTP 503", wantRequest: true},
 		{name: "invalid JSON", token: &oauth2.Token{AccessToken: "test-token"}, status: 200, body: "not JSON", wantError: "invalid", wantRequest: true},
@@ -42,7 +43,7 @@ func TestListVehicles(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			client := NewClient("https://fleet.example.com", tokens)
+			client := NewClient("https://fleet.example.com", auth.NewService(&oauth2.Config{}, "https://fleet.example.com", tokens))
 			called := false
 			client.httpClient.Transport = transportFunc(func(r *http.Request) (*http.Response, error) {
 				called = true
@@ -72,5 +73,45 @@ func TestListVehicles(t *testing.T) {
 				t.Fatalf("ListVehicles() = %s, %v", got, err)
 			}
 		})
+	}
+}
+
+func TestListVehiclesUsesRefreshedCredentials(t *testing.T) {
+	tokens := store.NewInMemoryStore()
+	if err := tokens.Save(context.Background(), &oauth2.Token{AccessToken: "expired", RefreshToken: "old-refresh", Expiry: time.Now().Add(-time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	service := auth.NewService(&oauth2.Config{
+		ClientID: "test-client", ClientSecret: "test-secret",
+		Endpoint: oauth2.Endpoint{TokenURL: "https://auth.example.com/token", AuthStyle: oauth2.AuthStyleInParams},
+	}, "https://fleet.example.com", tokens)
+	client := NewClient("https://fleet.example.com", service)
+	refreshes, vehicleCalls := 0, 0
+	transport := transportFunc(func(r *http.Request) (*http.Response, error) {
+		body := `{"response":[{"vin":"TESTVIN"}]}`
+		if r.URL.Path == "/token" {
+			refreshes++
+			body = `{"access_token":"renewed","refresh_token":"rotated","token_type":"Bearer","expires_in":3600}`
+		} else {
+			vehicleCalls++
+			if r.Header.Get("Authorization") != "Bearer renewed" {
+				t.Error("Fleet API received an old token")
+			}
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+	})
+	client.httpClient.Transport = transport
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Transport: transport})
+	for range 2 {
+		if _, err := client.ListVehicles(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if refreshes != 1 || vehicleCalls != 2 {
+		t.Fatalf("refreshes = %d, vehicle calls = %d", refreshes, vehicleCalls)
+	}
+	saved, err := tokens.Load(context.Background())
+	if err != nil || saved.RefreshToken != "rotated" {
+		t.Fatal("rotated refresh token was not retained")
 	}
 }

@@ -32,8 +32,8 @@ func NewServer(vehicles VehicleReader) *Server {
 func (mcp *Server) registerTools() {
 	sdk.AddTool(mcp.srv, &sdk.Tool{
 		Name:        "list_vehicles",
-		Description: "List vehicles belonging to the authorized Tesla account. Sign in through /auth/tsla first.",
-	}, mcp.RetrieveBasicVehicleData)
+		Description: "List vehicles belonging to the authorized Tesla account.",
+	}, mcp.ListVehicles)
 	sdk.AddTool(mcp.srv, &sdk.Tool{
 		Name:        "ping",
 		Description: "Check that the MCP server is responding.",
