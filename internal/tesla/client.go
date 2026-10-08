@@ -66,11 +66,15 @@ func (c *Client) ListVehicles(ctx context.Context) (json.RawMessage, error) {
 	if response.StatusCode == http.StatusUnauthorized {
 		return nil, errors.New("Tesla rejected authorization; reconnect through /auth/tsla")
 	}
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Tesla vehicles request failed: HTTP %d", response.StatusCode)
-	}
 	const maxResponseBytes = 1 << 20
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxResponseBytes+1))
+	if response.StatusCode != http.StatusOK {
+		// Keep the HTTP status even when Tesla's error body cannot be read.
+		if err != nil || len(body) > maxResponseBytes {
+			body = nil
+		}
+		return nil, c.responseError(response.StatusCode, body)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("read Tesla response: %w", err)
 	}
@@ -78,4 +82,29 @@ func (c *Client) ListVehicles(ctx context.Context) (json.RawMessage, error) {
 		return nil, errors.New("Tesla returned an invalid or oversized JSON response")
 	}
 	return json.RawMessage(body), nil
+}
+
+func (c *Client) responseError(status int, body []byte) error {
+	message := fmt.Sprintf("Tesla vehicles request failed: HTTP %d", status)
+	// Expose diagnostic fields rather than the entire upstream response.
+	var details struct {
+		Error            string `json:"error"`
+		ErrorDescription string `json:"error_description"`
+		TransactionID    string `json:"txid"`
+	}
+	if json.Unmarshal(body, &details) == nil {
+		if details.Error != "" {
+			message += fmt.Sprintf("; Tesla error: %.1024q", details.Error)
+		}
+		if details.ErrorDescription != "" {
+			message += fmt.Sprintf("; description: %.1024q", details.ErrorDescription)
+		}
+		if details.TransactionID != "" {
+			message += fmt.Sprintf("; txid: %.128q", details.TransactionID)
+		}
+	}
+	if status == http.StatusPreconditionFailed {
+		message += fmt.Sprintf("; check partner account registration in region %s: https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#register", c.baseURL)
+	}
+	return errors.New(message)
 }

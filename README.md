@@ -61,6 +61,18 @@ This is one shared Tesla account. The MCP endpoint has no client authentication,
 so any client with network access to it can use that account's tools. Tesla OAuth
 authorizes the service to access Tesla; it does not authenticate MCP clients.
 
+## Fleet API errors
+
+Tool errors include the Fleet API HTTP status and Tesla's `error`,
+`error_description`, and `txid` fields when present. Response bodies are bounded;
+invalid or oversized error responses fall back to the HTTP status.
+
+For HTTP 412, check partner account registration in the region configured by
+`TESLA_AUDIENCE`. Completing user OAuth does not register the application for
+Fleet API access. See [partner registration](https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#register)
+for the public key hosting and partner token requirements. Use the returned Tesla
+error details to confirm which precondition failed before registering.
+
 ## Verify
 
 ```sh
