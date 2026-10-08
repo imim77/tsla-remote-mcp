@@ -34,11 +34,17 @@ context so a caller disconnecting does not discard a rotated refresh token.
 | `TESLA_AUDIENCE` | Fleet API base URL for the account's region. For Europe: `https://fleet-api.prd.eu.vn.cloud.tesla.com`. |
 | `DOMAIN_SERVICE` | Public origin without a trailing slash, e.g. `https://your-service.onrender.com`. Defaults to `http://localhost:8080`. |
 | `PORT` | HTTP listen port. Defaults to `8080`; Render supplies this variable. |
+| `APP_ENV` | Set to `production` when deploying behind a trusted reverse proxy such as Render. Unset by default. |
 
 Register `DOMAIN_SERVICE` plus `/auth/callback` as the redirect URI in the Tesla
 application. For local use with a different port, set `DOMAIN_SERVICE` accordingly.
 The OAuth state cookie uses `Secure` when this configured callback uses HTTPS,
 including when TLS terminates at Render's proxy.
+
+Set `APP_ENV=production` in Render's environment settings. In production, the MCP
+handler disables the SDK's localhost Host check because a trusted reverse proxy
+can forward public requests over a loopback connection. Other environments retain
+the SDK's default protection.
 
 ## Use
 

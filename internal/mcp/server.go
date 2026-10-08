@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"net/http"
+	"os"
 
 	sdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -51,5 +52,7 @@ func NewHandler(vehicles VehicleReader) http.Handler {
 	}, &sdk.StreamableHTTPOptions{
 		Stateless:    true,
 		JSONResponse: true,
+		// Production proxies can forward public requests over loopback.
+		DisableLocalhostProtection: os.Getenv("APP_ENV") == "production",
 	})
 }
