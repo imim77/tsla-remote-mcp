@@ -73,7 +73,7 @@ func (c *Client) ListVehicles(ctx context.Context) (json.RawMessage, error) {
 		if err != nil || len(body) > maxResponseBytes {
 			body = nil
 		}
-		return nil, c.responseError(response.StatusCode, body)
+		return nil, fleetAPIError(response.StatusCode, body, c.baseURL)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("read Tesla response: %w", err)
@@ -84,8 +84,8 @@ func (c *Client) ListVehicles(ctx context.Context) (json.RawMessage, error) {
 	return json.RawMessage(body), nil
 }
 
-func (c *Client) responseError(status int, body []byte) error {
-	message := fmt.Sprintf("Tesla vehicles request failed: HTTP %d", status)
+func fleetAPIError(status int, body []byte, audience string) error {
+	message := fmt.Sprintf("Tesla request failed: HTTP %d", status)
 	// Expose diagnostic fields rather than the entire upstream response.
 	var details struct {
 		Error            string `json:"error"`
@@ -104,7 +104,7 @@ func (c *Client) responseError(status int, body []byte) error {
 		}
 	}
 	if status == http.StatusPreconditionFailed {
-		message += fmt.Sprintf("; check partner account registration in region %s: https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#register", c.baseURL)
+		message += fmt.Sprintf("; check partner account registration in region %s: https://developer.tesla.com/docs/fleet-api/endpoints/partner-endpoints#register", audience)
 	}
 	return errors.New(message)
 }

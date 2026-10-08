@@ -2,3 +2,4 @@
 *.iml
 build
 .DS_Store
+.secrets/

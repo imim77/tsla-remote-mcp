@@ -73,6 +73,40 @@ Fleet API access. See [partner registration](https://developer.tesla.com/docs/fl
 for the public key hosting and partner token requirements. Use the returned Tesla
 error details to confirm which precondition failed before registering.
 
+## Register the Tesla partner application
+
+The application publishes its P-256 public key at
+`/.well-known/appspecific/com.tesla.3p.public-key.pem`. The key is embedded from
+`internal/tesla/public-key.pem` so deployments retain the same public key.
+The corresponding private key is kept locally in `.secrets/tesla-private-key.pem`.
+Keep a secure backup of that private key; `.secrets/` is ignored by Git and is not
+deployed. Vehicle listing does not require the private key on the server.
+
+1. Deploy this version to Render.
+2. Open `https://tsla-remote-mcp.onrender.com/.well-known/appspecific/com.tesla.3p.public-key.pem`
+   and confirm that it returns the public PEM key.
+3. In a trusted local terminal or Render Shell with `TESLA_CLIENT_ID` and
+   `TESLA_CLIENT_SECRET` already set, run from the repository root:
+
+   ```sh
+   DOMAIN_SERVICE=https://tsla-remote-mcp.onrender.com \
+   TESLA_AUDIENCE=https://fleet-api.prd.eu.vn.cloud.tesla.com \
+   go run ./cmd/register-partner
+   ```
+
+4. Connect the Tesla account again if the deploy cleared the in-memory store,
+   then retry `list_vehicles`.
+
+The command checks the deployed key before obtaining a separate partner token
+with `client_credentials`. It sends `{"domain":"tsla-remote-mcp.onrender.com"}`
+to the regional `POST /api/1/partner_accounts` endpoint, then reads Tesla's
+registered public key to confirm that it matches. It does not print credentials
+or save the partner token in the user token store. The domain must match the
+application's Allowed Origins in the Tesla Developer portal.
+
+Run registration once per required Fleet API region. Keep the public key hosted
+after registration. Do not regenerate the key on startup or redeploy.
+
 ## Verify
 
 ```sh
