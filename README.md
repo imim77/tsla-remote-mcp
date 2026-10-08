@@ -83,13 +83,13 @@ Keep a secure backup of that private key; `.secrets/` is ignored by Git and is n
 deployed. Vehicle listing does not require the private key on the server.
 
 1. Deploy this version to Render.
-2. Open `https://tsla-remote-mcp.onrender.com/.well-known/appspecific/com.tesla.3p.public-key.pem`
+2. Open `https://your-service.onrender.com/.well-known/appspecific/com.tesla.3p.public-key.pem`
    and confirm that it returns the public PEM key.
 3. In a trusted local terminal or Render Shell with `TESLA_CLIENT_ID` and
    `TESLA_CLIENT_SECRET` already set, run from the repository root:
 
    ```sh
-   DOMAIN_SERVICE=https://tsla-remote-mcp.onrender.com \
+   DOMAIN_SERVICE=https://your-service.onrender.com \
    TESLA_AUDIENCE=https://fleet-api.prd.eu.vn.cloud.tesla.com \
    go run ./cmd/register-partner
    ```
@@ -98,7 +98,7 @@ deployed. Vehicle listing does not require the private key on the server.
    then retry `list_vehicles`.
 
 The command checks the deployed key before obtaining a separate partner token
-with `client_credentials`. It sends `{"domain":"tsla-remote-mcp.onrender.com"}`
+with `client_credentials`. It sends `{"domain":"your-service.onrender.com"}`
 to the regional `POST /api/1/partner_accounts` endpoint, then reads Tesla's
 registered public key to confirm that it matches. It does not print credentials
 or save the partner token in the user token store. The domain must match the
@@ -109,7 +109,7 @@ representation and PEM. If registration was submitted but verification failed,
 check the existing registration without sending another registration request:
 
 ```sh
-DOMAIN_SERVICE=https://tsla-remote-mcp.onrender.com \
+DOMAIN_SERVICE=https://your-service.onrender.com \
 TESLA_AUDIENCE=https://fleet-api.prd.eu.vn.cloud.tesla.com \
 go run ./cmd/register-partner -verify-only
 ```
